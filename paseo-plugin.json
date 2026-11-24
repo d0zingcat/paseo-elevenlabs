@@ -1,0 +1,14 @@
+{
+  "id": "elevenlabs-stt",
+  "name": "ElevenLabs STT",
+  "description": "Use ElevenLabs Scribe for Paseo dictation through a loopback OpenAI-compatible endpoint",
+  "translations": {
+    "zh-CN": {
+      "name": "ElevenLabs 语音输入",
+      "description": "通过本地 OpenAI 兼容端点，让 Paseo 听写使用 ElevenLabs Scribe"
+    }
+  },
+  "requirements": {
+    "paseo": ">=0.15.4"
+  }
+}
