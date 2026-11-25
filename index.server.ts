@@ -247,14 +247,16 @@ export default function contribute(server: PluginServerContext) {
     return { ok: result.restored, restored: result.restored, message: result.reason };
   });
 
-  // Resume management across daemon restarts: when a previous snapshot exists
-  // the user was using ElevenLabs, so restart the shim and refresh the token.
-  // Fresh installs (no snapshot) wait for an explicit Enable.
+  // Resume management across daemon restarts: when a previous snapshot or
+  // persisted shim token exists, the user was using ElevenLabs, so restart the
+  // shim and reuse/refresh the token. Fresh installs wait for an explicit Enable.
   void (async () => {
     try {
       currentPrefs = await readPrefs(readSettings);
       if (!currentPrefs.manageDictation) return;
-      if (!(await hasPreviousSnapshot())) return;
+      const hasSnapshot = await hasPreviousSnapshot();
+      const hasToken = (await readShimToken()) !== null;
+      if (!hasSnapshot && !hasToken) return;
       const key = await readApiKey();
       if (!key) {
         state.lastError = "ElevenLabs API key is missing after restart; dictation was left as-is.";
