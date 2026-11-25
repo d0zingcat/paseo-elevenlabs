@@ -5,9 +5,9 @@ OpenAI-compatible endpoint running on 127.0.0.1 on the daemon machine. Because P
 already supports OpenAI speech endpoints, dictation works identically across the
 desktop app, the web app, and the iOS and Android apps.
 
-Currently supported upstream providers: DeepInfra (Whisper), Qianwen AI (Qwen3-ASR Flash) and ElevenLabs Scribe (`scribe_v2` and
-`scribe_v3`), structured behind a provider adapter layer so additional STT, TTS,
-and realtime voice services can be added cleanly.
+Supported upstream providers: ElevenLabs Scribe (`scribe_v2`, `scribe_v3`), DeepInfra
+(Whisper large-v3 and large-v3 turbo) and Qianwen AI (Qwen3-ASR Flash). Each provider is
+a separate adapter, so more speech-to-text, text-to-speech, and realtime voice services can be added.
 
 How it works: when you enable dictation management, the plugin saves the previous
 dictation speech setting, points dictation at the local loopback endpoint with a
@@ -22,7 +22,9 @@ options such as model and language hints, and enable dictation. Requires Paseo 0
 or later with plugins enabled and internet access from the daemon machine to reach
 the selected upstream provider.
 
-Data and limits: audio you dictate is sent to the selected upstream provider for
-transcription, and the returned text enters Paseo as your message. Optional Scribe v3
-features such as `secondary_language_codes`, `numbers_format`, and `transcript_edit`
-can be configured in Options (with `transcript_edit` off by default).
+Data and limits: audio you dictate is sent to the provider you select, and the returned text
+enters Paseo as your message. ElevenLabs audio goes to api.elevenlabs.io, DeepInfra audio to
+api.deepinfra.com, and Qianwen AI audio to maas.qianwenaiapi.com. Provider API keys are stored
+only on the daemon machine. Secondary languages and `transcript_edit` (off by default) apply to
+ElevenLabs Scribe v3 only. Numbers as digits applies to Scribe v3 and Qianwen AI. DeepInfra
+and Qianwen AI use the primary language hint when set.
