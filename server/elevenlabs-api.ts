@@ -53,14 +53,24 @@ function buildMultipartBody(
   return { body: Buffer.concat(chunks), contentType: "multipart/form-data; boundary=" + boundary };
 }
 
+const KEY_CHECK_TIMEOUT_MS = 15_000;
+
 export async function testApiKey(key: string): Promise<{ ok: boolean; message: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), KEY_CHECK_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(ELEVENLABS_API_BASE + "/v1/user/subscription", {
       headers: { "xi-api-key": key },
+      signal: controller.signal,
     });
   } catch (error) {
+    if (controller.signal.aborted) {
+      return { ok: false, message: "Could not reach ElevenLabs: Request timed out after 15s." };
+    }
     return { ok: false, message: "Could not reach ElevenLabs: " + describeError(error) };
+  } finally {
+    clearTimeout(timer);
   }
   if (res.ok) {
     let tier = "";

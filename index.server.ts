@@ -12,7 +12,7 @@ import {
   takeOverDictation,
 } from "./server/config-manager";
 import { type StartedShim, startShim } from "./server/shim";
-import { clearApiKey, readApiKey, writeApiKey } from "./server/store";
+import { clearApiKey, readApiKey, readShimToken, writeApiKey, writeShimToken } from "./server/store";
 import {
   clearApiKeyRpc,
   DEFAULT_SHIM_PORT,
@@ -37,12 +37,40 @@ interface RuntimeState {
   token: string;
   baseUrl: string;
   lastError: string | null;
+  needsConfigSync: boolean;
   stopping: boolean;
   paseo: PaseoApi | null;
 }
 
 function createState(): RuntimeState {
-  return { shim: null, token: "", baseUrl: "", lastError: null, stopping: false, paseo: null };
+  return {
+    shim: null,
+    token: "",
+    baseUrl: "",
+    lastError: null,
+    needsConfigSync: false,
+    stopping: false,
+    paseo: null,
+  };
+}
+
+async function syncActiveShimConfig(
+  paseo: PaseoApi,
+  baseUrl: string,
+  token: string,
+  model: string,
+): Promise<boolean> {
+  const currentStt = getDictationStt(await readDaemonConfig(paseo));
+  if (!currentStt || typeof currentStt !== "object" || !isOurEndpoint(currentStt, baseUrl)) {
+    return false;
+  }
+  await patchDictationStt(paseo, {
+    ...(currentStt as Record<string, unknown>),
+    apiKey: token,
+    model,
+  });
+  await writeShimToken(token);
+  return true;
 }
 
 async function readPrefs(read: () => Promise<{ status: string; values?: unknown }>): Promise<ElevenlabsPreferences> {
@@ -82,10 +110,13 @@ export default function contribute(server: PluginServerContext) {
     }
   });
 
-  async function ensureShim(prefs: ElevenlabsPreferences): Promise<StartedShim> {
+  async function ensureShim(
+    prefs: ElevenlabsPreferences,
+    options: { reusePersistedToken?: boolean } = {},
+  ): Promise<{ shim: StartedShim; reusedToken: boolean }> {
     if (state.shim && state.baseUrl !== "") {
       const currentPort = new URL(state.baseUrl).port;
-      if (Number(currentPort) === prefs.port) return state.shim;
+      if (Number(currentPort) === prefs.port) return { shim: state.shim, reusedToken: true };
       state.stopping = true;
       try {
         await state.shim.stop();
@@ -94,7 +125,9 @@ export default function contribute(server: PluginServerContext) {
       }
       state.shim = null;
     }
-    state.token = randomBytes(32).toString("hex");
+    const persisted = options.reusePersistedToken ? await readShimToken() : null;
+    const reusedToken = persisted !== null;
+    state.token = persisted ?? randomBytes(32).toString("hex");
     const shim = await startShim(prefs.port, {
       getToken: () => state.token,
       getModelId: () => currentPrefs.modelId,
@@ -121,14 +154,30 @@ export default function contribute(server: PluginServerContext) {
       }
     });
     console.log("[elevenlabs-stt] shim listening on " + shim.baseUrl);
-    return shim;
+    return { shim, reusedToken };
   }
 
   server.handle(getStatusRpc, async (_, { paseo }) => {
     remember(paseo);
     currentPrefs = await readPrefs(readSettings);
+    if (state.needsConfigSync && state.shim && state.baseUrl !== "" && currentPrefs.manageDictation) {
+      try {
+        await syncActiveShimConfig(paseo, state.baseUrl, state.token, currentPrefs.modelId);
+        state.needsConfigSync = false;
+        state.lastError = null;
+      } catch (error) {
+        state.lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
     const key = await readApiKey();
-    const managing = state.baseUrl !== "" && state.shim !== null;
+    let managing = state.baseUrl !== "" && state.shim !== null;
+    if (managing) {
+      try {
+        managing = isOurEndpoint(getDictationStt(await readDaemonConfig(paseo)), state.baseUrl);
+      } catch {
+        // Keep runtime shim assumption if config read temporarily fails.
+      }
+    }
     let previousSaved = false;
     try {
       previousSaved = await hasPreviousSnapshot();
@@ -173,20 +222,17 @@ export default function contribute(server: PluginServerContext) {
     const key = await readApiKey();
     if (!key) throw new Error("Save an ElevenLabs API key first.");
     if (!currentPrefs.manageDictation) throw new Error("Dictation management is turned off in preferences.");
-    const shim = await ensureShim(currentPrefs);
+    const { shim } = await ensureShim(currentPrefs);
     try {
       const { alreadyManaged } = await takeOverDictation(paseo, shim.baseUrl, state.token, currentPrefs.modelId);
       if (alreadyManaged) {
         // Same endpoint, but the token rotates on every shim start: refresh it.
-        const currentStt = getDictationStt(await readDaemonConfig(paseo));
-        if (currentStt && typeof currentStt === "object" && isOurEndpoint(currentStt, shim.baseUrl)) {
-          await patchDictationStt(paseo, {
-            ...(currentStt as Record<string, unknown>),
-            apiKey: state.token,
-            model: currentPrefs.modelId,
-          });
-        }
+        await syncActiveShimConfig(paseo, shim.baseUrl, state.token, currentPrefs.modelId);
+      } else {
+        await writeShimToken(state.token);
       }
+      state.needsConfigSync = false;
+      state.lastError = null;
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : String(error));
     }
@@ -214,15 +260,19 @@ export default function contribute(server: PluginServerContext) {
         state.lastError = "ElevenLabs API key is missing after restart; dictation was left as-is.";
         return;
       }
-      const shim = await ensureShim(currentPrefs);
+      const { shim, reusedToken } = await ensureShim(currentPrefs, { reusePersistedToken: true });
       if (state.paseo) {
-        await takeOverDictation(state.paseo, shim.baseUrl, state.token, currentPrefs.modelId).catch(
-          (error: unknown) => {
-            state.lastError = error instanceof Error ? error.message : String(error);
-          },
-        );
-      } else {
-        state.lastError = "Shim is listening on " + shim.baseUrl + "; open the plugin once to re-apply dictation.";
+        const { alreadyManaged } = await takeOverDictation(state.paseo, shim.baseUrl, state.token, currentPrefs.modelId);
+        if (alreadyManaged) {
+          await syncActiveShimConfig(state.paseo, shim.baseUrl, state.token, currentPrefs.modelId);
+        } else {
+          await writeShimToken(state.token);
+        }
+        state.needsConfigSync = false;
+      } else if (!reusedToken) {
+        state.needsConfigSync = true;
+        state.lastError =
+          "Shim restarted with a new token; open the ElevenLabs plugin screen once to sync dictation.";
       }
     } catch (error) {
       state.lastError = error instanceof Error ? error.message : String(error);

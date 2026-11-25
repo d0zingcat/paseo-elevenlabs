@@ -8,6 +8,7 @@ import {
   SettingsSection,
   SettingsSelect,
   SettingsSwitch,
+  useToast,
 } from "@getpaseo/plugin/client/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -59,7 +60,9 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     refetchInterval: 10000,
   });
 
+  const toast = useToast();
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [keyCheckNotice, setKeyCheckNotice] = useState<Notice | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState<string>("scribe_v2");
   const [languageDraft, setLanguageDraft] = useState("");
@@ -77,13 +80,21 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     }
   }, [prefs, draftsSeeded]);
 
-  const notify = (kind: Notice["kind"], text: string) => setNotice({ kind, text });
+  const notify = (kind: Notice["kind"], text: string) => {
+    setNotice({ kind, text });
+    if (kind === "ok") {
+      toast.show(text, { variant: "success" });
+    } else {
+      toast.error(text);
+    }
+  };
   const notifyError = (error: unknown) => notify("error", error instanceof Error ? error.message : String(error));
 
   const saveKey = useMutation({
     mutationFn: () => callSetKey({ key: keyDraft }),
     onSuccess: () => {
       setKeyDraft("");
+      setKeyCheckNotice(null);
       notify("ok", "API key saved on the daemon. It is never shown back in the app.");
       void statusQuery.refetch();
     },
@@ -92,6 +103,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const clearKey = useMutation({
     mutationFn: () => callClearKey({}),
     onSuccess: () => {
+      setKeyCheckNotice(null);
       notify("ok", "API key removed from the daemon.");
       void statusQuery.refetch();
     },
@@ -99,13 +111,24 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   });
   const testKey = useMutation({
     mutationFn: () => callTestKey({}),
-    onSuccess: (result) => notify(result.ok ? "ok" : "error", result.message),
-    onError: notifyError,
+    onMutate: () => setKeyCheckNotice(null),
+    onSuccess: (result) => {
+      const kind = result.ok ? "ok" : "error";
+      setKeyCheckNotice({ kind, text: result.message });
+      notify(kind, result.message);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setKeyCheckNotice({ kind: "error", text: message });
+      notify("error", message);
+    },
   });
   const enable = useMutation({
     mutationFn: () => callEnable({}),
-    onSuccess: (result) =>
-      notify(result.ok ? "ok" : "error", result.message + " Endpoint: " + result.baseUrl),
+    onSuccess: (result) => {
+      notify(result.ok ? "ok" : "error", result.message + " Endpoint: " + result.baseUrl);
+      void statusQuery.refetch();
+    },
     onError: notifyError,
   });
   const restore = useMutation({
@@ -148,6 +171,9 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         Routes Paseo dictation through ElevenLabs Scribe via a loopback OpenAI-compatible endpoint on the daemon
         machine. Audio goes to ElevenLabs; the API key stays in a daemon-only file.
       </Text>
+
+      {prefs.saveError ? <Text style={styles.error}>{prefs.saveError}</Text> : null}
+      {notice ? <Text style={notice.kind === "ok" ? styles.ok : styles.error}>{notice.text}</Text> : null}
 
       <SettingsSection title="Status">
         <SettingsCard>
@@ -194,14 +220,21 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
           />
           <SettingsAction
             label="Save"
-            actionLabel="Save key"
+            actionLabel={saveKey.isPending ? "Saving…" : "Save key"}
             onPress={() => saveKey.mutate()}
             disabled={busy || keyDraft.trim().length === 0}
           />
-          <SettingsAction label="Check" actionLabel="Test saved key" onPress={() => testKey.mutate()} disabled={busy} />
+          <SettingsAction
+            label="Check"
+            hint={keyCheckNotice?.kind === "ok" ? keyCheckNotice.text : undefined}
+            error={keyCheckNotice?.kind === "error" ? keyCheckNotice.text : undefined}
+            actionLabel={testKey.isPending ? "Testing…" : "Test saved key"}
+            onPress={() => testKey.mutate()}
+            disabled={busy}
+          />
           <SettingsAction
             label="Remove"
-            actionLabel="Remove saved key"
+            actionLabel={clearKey.isPending ? "Removing…" : "Remove saved key"}
             onPress={() => clearKey.mutate()}
             disabled={busy}
           />
@@ -245,7 +278,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
               />
               <SettingsAction
                 label="Options"
-                actionLabel="Save options"
+                actionLabel={prefs.saving ? "Saving…" : "Save options"}
                 onPress={() => void savePrefs()}
                 disabled={busy || prefs.saving}
               />
@@ -263,21 +296,19 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         <SettingsCard>
           <SettingsAction
             label="Enable"
-            actionLabel="Use ElevenLabs for dictation"
+            actionLabel={enable.isPending ? "Enabling…" : "Use ElevenLabs for dictation"}
             onPress={() => enable.mutate()}
             disabled={busy}
           />
           <SettingsAction
             label="Restore"
-            actionLabel="Restore previous dictation"
+            actionLabel={restore.isPending ? "Restoring…" : "Restore previous dictation"}
             onPress={() => restore.mutate()}
             disabled={busy}
           />
         </SettingsCard>
       </SettingsSection>
 
-      {prefs.saveError ? <Text style={styles.error}>{prefs.saveError}</Text> : null}
-      {notice ? <Text style={notice.kind === "ok" ? styles.ok : styles.error}>{notice.text}</Text> : null}
       <Text style={styles.section}>Limits in this version</Text>
       <Text style={styles.muted}>
         Dictation only. Voice mode listening and speaking keep their current providers. Realtime Scribe models are not

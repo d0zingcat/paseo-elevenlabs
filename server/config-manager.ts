@@ -1,6 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
 import {
   clearPreviousDictationStt,
+  clearShimToken,
   readPreviousDictationStt,
   writePreviousDictationStt,
 } from "./store";
@@ -26,16 +27,20 @@ export function isOurEndpoint(stt: unknown, baseUrl: string): boolean {
   return record !== null && record.provider === "openai" && record.baseUrl === baseUrl;
 }
 
+function omitKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!keys.includes(key)) clean[key] = value;
+  }
+  return clean;
+}
+
 function sanitizeForRestore(snapshot: unknown): Record<string, unknown> | null {
   const record = asRecord(snapshot);
   if (!record) return null;
-  const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    // hasApiKey is a read-only marker; never write it back. The daemon keeps
-    // the stored secret when a patch omits apiKey.
-    if (key === "hasApiKey" || key === "apiKey") continue;
-    clean[key] = value;
-  }
+  // hasApiKey is a read-only marker; never write it back. The daemon keeps
+  // the stored secret when a patch omits apiKey.
+  const clean = omitKeys(record, ["hasApiKey", "apiKey"]);
   if (typeof clean.provider !== "string") return null;
   return clean;
 }
@@ -46,14 +51,12 @@ export async function readDaemonConfig(paseo: PaseoApi): Promise<unknown> {
 }
 
 export async function patchDictationStt(paseo: PaseoApi, stt: Record<string, unknown>): Promise<void> {
-  const config = await readDaemonConfig(paseo);
-  const root = asRecord(config) ?? {};
-  const features = asRecord(root.features) ?? {};
-  const dictation = asRecord(features.dictation) ?? {};
+  // hasApiKey is read-only in config reads and rejected in config patches.
+  // Patch only features.dictation.stt so sibling sections with read-only markers are not sent back.
+  const cleanStt = omitKeys(stt, ["hasApiKey"]);
   await paseo.config.patch({
     features: {
-      ...features,
-      dictation: { ...dictation, stt },
+      dictation: { stt: cleanStt },
     },
   });
 }
@@ -103,6 +106,7 @@ export async function restoreDictationIfOurs(
   }
   await patchDictationStt(paseo, clean);
   await clearPreviousDictationStt();
+  await clearShimToken();
   return { restored: true, reason: "Previous dictation setting restored." };
 }
 
