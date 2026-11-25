@@ -16,13 +16,13 @@ import { ScrollView, Text } from "react-native";
 import {
   clearApiKeyRpc,
   DEFAULT_TRANSCRIPT_EDIT_PROMPT,
-  ELEVENLABS_STT_MODELS,
   enableDictationRpc,
   getStatusRpc,
   MAX_TRANSCRIPT_EDIT_CHARS,
   parseSecondaryLanguages,
   restorePreviousRpc,
   setApiKeyRpc,
+  STT_MODEL_OPTIONS,
   testKeyRpc,
   VOICE_PROVIDERS,
   voicePreferences,
@@ -39,13 +39,7 @@ interface Notice {
 
 const PROVIDER_LABELS: Record<VoiceProviderId, string> = {
   elevenlabs: "ElevenLabs",
-};
-
-const MODEL_OPTIONS: Record<VoiceProviderId, ReadonlyArray<{ label: string; value: string }>> = {
-  elevenlabs: [
-    { label: "Scribe v2 (stable)", value: "scribe_v2" },
-    { label: "Scribe v3 (newer)", value: "scribe_v3" },
-  ],
+  deepinfra: "DeepInfra",
 };
 
 function isVoiceProviderId(value: string): value is VoiceProviderId {
@@ -188,7 +182,10 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
       notify("error", "Edit instruction must be at most " + MAX_TRANSCRIPT_EDIT_CHARS + " characters.");
       return;
     }
-    const modelId = (ELEVENLABS_STT_MODELS as readonly string[]).includes(modelDraft) ? modelDraft : "scribe_v3";
+    const providerModels = STT_MODEL_OPTIONS[activeProvider];
+    const modelId = providerModels.some((option) => option.value === modelDraft)
+      ? modelDraft
+      : providerModels[0].value;
     const ok = await prefs.save(
       {
         provider: activeProvider,
@@ -302,13 +299,16 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
                 value={activeProvider}
                 options={VOICE_PROVIDERS.map((id) => ({ label: PROVIDER_LABELS[id], value: id }))}
                 onValueChange={(value) => {
-                  if (isVoiceProviderId(value)) setProviderDraft(value);
+                  if (isVoiceProviderId(value)) {
+                    setProviderDraft(value);
+                    setModelDraft(STT_MODEL_OPTIONS[value][0].value);
+                  }
                 }}
               />
               <SettingsSelect
                 label="Model"
                 value={modelDraft}
-                options={MODEL_OPTIONS[activeProvider]}
+                options={STT_MODEL_OPTIONS[activeProvider]}
                 onValueChange={setModelDraft}
               />
               <SettingsInput
@@ -320,14 +320,14 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
               />
               <SettingsInput
                 label="Secondary languages"
-                hint="Comma-separated (e.g. en). Used alongside Language on Scribe v3."
+                hint="Comma-separated (e.g. en). Used alongside Language on ElevenLabs Scribe v3 only."
                 initialValue={prefs.values.secondaryLanguages}
                 placeholder="en"
                 onChangeText={setSecondaryLanguagesDraft}
               />
               <SettingsSwitch
                 label="Numbers as digits"
-                hint="Format numbers as 42 instead of forty-two (Scribe v3 only)."
+                hint="Format numbers as 42 instead of forty-two (ElevenLabs Scribe v3 only)."
                 value={numbersAsDigitsDraft}
                 onValueChange={setNumbersAsDigitsDraft}
               />
@@ -392,7 +392,7 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
 
       <Text style={styles.section}>Scope & roadmap</Text>
       <Text style={styles.muted}>
-        Currently supports dictation via ElevenLabs Scribe, with a provider adapter layout ready for additional STT,
+        Currently supports dictation via ElevenLabs Scribe and DeepInfra (Whisper, Qwen3-ASR), with a provider adapter layout ready for additional STT,
         TTS, and realtime voice services. Disabling or removing the plugin restores the previous dictation setting when
         it still points at this gateway.
       </Text>
