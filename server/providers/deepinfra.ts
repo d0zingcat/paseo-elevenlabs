@@ -12,6 +12,7 @@ export const deepinfraProvider: VoiceSttProvider = {
   models: [
     { id: "openai/whisper-large-v3-turbo", label: "Whisper large-v3 turbo (fast)" },
     { id: "openai/whisper-large-v3", label: "Whisper large-v3 (best accuracy)" },
+    { id: "Qwen/Qwen3-ASR-0.6B", label: "Qwen3-ASR 0.6B" },
   ],
 
   async testApiKey(key: string): Promise<{ ok: boolean; message: string }> {

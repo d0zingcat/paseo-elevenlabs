@@ -5,7 +5,7 @@
 iOS 与 Android 端的听写行为保持一致。
 
 当前已接入的上游服务：ElevenLabs Scribe（`scribe_v2`、`scribe_v3`）、DeepInfra
-（Whisper large-v3 与 large-v3 turbo）和千问 AI（Qwen3-ASR Flash）。每个服务商都是独立的
+（Whisper large-v3、large-v3 turbo 与 Qwen3-ASR 0.6B）和千问 AI（Qwen3-ASR Flash）。每个服务商都是独立的
 适配器，后续可扩展更多 STT、TTS 及实时语音对话服务。
 
 工作原理：启用接管后，插件会先保存当前的听写语音设置，再把听写指向本地回环端点

@@ -6,7 +6,7 @@ already supports OpenAI speech endpoints, dictation works identically across the
 desktop app, the web app, and the iOS and Android apps.
 
 Supported upstream providers: ElevenLabs Scribe (`scribe_v2`, `scribe_v3`), DeepInfra
-(Whisper large-v3 and large-v3 turbo) and Qianwen AI (Qwen3-ASR Flash). Each provider is
+(Whisper large-v3, large-v3 turbo and Qwen3-ASR 0.6B) and Qianwen AI (Qwen3-ASR Flash). Each provider is
 a separate adapter, so more speech-to-text, text-to-speech, and realtime voice services can be added.
 
 How it works: when you enable dictation management, the plugin saves the previous

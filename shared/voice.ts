@@ -13,6 +13,7 @@ export const STT_MODEL_OPTIONS: Record<VoiceProviderId, ReadonlyArray<{ label: s
   deepinfra: [
     { label: "Whisper large-v3 turbo (fast)", value: "openai/whisper-large-v3-turbo" },
     { label: "Whisper large-v3 (best accuracy)", value: "openai/whisper-large-v3" },
+    { label: "Qwen3-ASR 0.6B", value: "Qwen/Qwen3-ASR-0.6B" },
   ],
 };
 

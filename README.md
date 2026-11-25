@@ -7,7 +7,7 @@ endpoint on the daemon machine.
 
 - Runs a `127.0.0.1` loopback gateway accepting Paseo's `POST /v1/audio/transcriptions`
   and dispatching through modular provider adapters (`server/providers/`).
-- Providers: **ElevenLabs Scribe** (`scribe_v2`, `scribe_v3`), **DeepInfra** (Whisper large-v3 / turbo) and **Qianwen AI** (Qwen3-ASR Flash). Scribe supports
+- Providers: **ElevenLabs Scribe** (`scribe_v2`, `scribe_v3`), **DeepInfra** (Whisper large-v3 / turbo, Qwen3-ASR 0.6B) and **Qianwen AI** (Qwen3-ASR Flash). Scribe supports
   primary/secondary language hints, `numbers_format=digits`, and optional `transcript_edit`.
 - Saves the current dictation setting before switching and restores it on demand,
   on unexpected exit, or on plugin disable/remove (only when still pointing at the gateway).
