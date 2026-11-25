@@ -256,10 +256,27 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title={activeProviderLabel + " API key"}>
+      <SettingsSection title="Provider">
         <SettingsCard>
+          {prefs.status === "ready" ? (
+            <SettingsSelect
+              label="Provider"
+              hint="Applied to dictation after you press Save options."
+              value={activeProvider}
+              options={VOICE_PROVIDERS.map((id) => ({ label: PROVIDER_LABELS[id], value: id }))}
+              onValueChange={(value) => {
+                if (isVoiceProviderId(value) && value !== providerDraft) {
+                  setProviderDraft(value);
+                  setModelDraft(STT_MODEL_OPTIONS[value][0].value);
+                  setKeyDraft("");
+                  setKeyCheckNotice(null);
+                }
+              }}
+            />
+          ) : null}
           <SettingsInput
-            label="Key"
+            key={activeProvider}
+            label={activeProviderLabel + " API key"}
             hint="Stored daemon-side only. Saving replaces the previous key."
             initialValue=""
             placeholder="API key"
@@ -295,17 +312,6 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
             <Loading />
           ) : prefs.status === "ready" ? (
             <>
-              <SettingsSelect
-                label="Provider"
-                value={activeProvider}
-                options={VOICE_PROVIDERS.map((id) => ({ label: PROVIDER_LABELS[id], value: id }))}
-                onValueChange={(value) => {
-                  if (isVoiceProviderId(value)) {
-                    setProviderDraft(value);
-                    setModelDraft(STT_MODEL_OPTIONS[value][0].value);
-                  }
-                }}
-              />
               <SettingsSelect
                 label="Model"
                 value={modelDraft}
