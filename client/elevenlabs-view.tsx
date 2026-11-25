@@ -15,10 +15,12 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text } from "react-native";
 import {
   clearApiKeyRpc,
+  DEFAULT_TRANSCRIPT_EDIT_PROMPT,
   ELEVENLABS_STT_MODELS,
   elevenlabsPreferences,
   enableDictationRpc,
   getStatusRpc,
+  MAX_TRANSCRIPT_EDIT_CHARS,
   parseSecondaryLanguages,
   restorePreviousRpc,
   setApiKeyRpc,
@@ -69,6 +71,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const [languageDraft, setLanguageDraft] = useState("");
   const [secondaryLanguagesDraft, setSecondaryLanguagesDraft] = useState("");
   const [numbersAsDigitsDraft, setNumbersAsDigitsDraft] = useState(true);
+  const [transcriptEditEnabledDraft, setTranscriptEditEnabledDraft] = useState(false);
+  const [transcriptEditPromptDraft, setTranscriptEditPromptDraft] = useState(DEFAULT_TRANSCRIPT_EDIT_PROMPT);
   const [portDraft, setPortDraft] = useState("8765");
   const [manageDraft, setManageDraft] = useState(true);
   const [draftsSeeded, setDraftsSeeded] = useState(false);
@@ -79,6 +83,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
       setLanguageDraft(prefs.values.language);
       setSecondaryLanguagesDraft(prefs.values.secondaryLanguages);
       setNumbersAsDigitsDraft(prefs.values.numbersAsDigits);
+      setTranscriptEditEnabledDraft(prefs.values.transcriptEditEnabled);
+      setTranscriptEditPromptDraft(prefs.values.transcriptEditPrompt);
       setPortDraft(String(prefs.values.port));
       setManageDraft(prefs.values.manageDictation);
       setDraftsSeeded(true);
@@ -154,6 +160,11 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     }
     const primaryLanguage = languageDraft.trim();
     const secondaryLanguages = parseSecondaryLanguages(secondaryLanguagesDraft, primaryLanguage).join(", ");
+    const transcriptEditPrompt = transcriptEditPromptDraft.trim();
+    if (transcriptEditPrompt.length > MAX_TRANSCRIPT_EDIT_CHARS) {
+      notify("error", "Edit instruction must be at most " + MAX_TRANSCRIPT_EDIT_CHARS + " characters.");
+      return;
+    }
     const ok = await prefs.save(
       {
         modelId: (ELEVENLABS_STT_MODELS as readonly string[]).includes(modelDraft)
@@ -162,6 +173,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         language: primaryLanguage,
         secondaryLanguages,
         numbersAsDigits: numbersAsDigitsDraft,
+        transcriptEditEnabled: transcriptEditEnabledDraft,
+        transcriptEditPrompt,
         port,
         manageDictation: manageDraft,
       },
@@ -284,6 +297,19 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
                 hint="Format numbers as 42 instead of forty-two (Scribe v3 only)."
                 value={numbersAsDigitsDraft}
                 onValueChange={setNumbersAsDigitsDraft}
+              />
+              <SettingsSwitch
+                label="Transcript edit"
+                hint="Off by default. Clean up typos with the instruction below (+30% cost, 10s min per call)."
+                value={transcriptEditEnabledDraft}
+                onValueChange={setTranscriptEditEnabledDraft}
+              />
+              <SettingsInput
+                label="Edit instruction"
+                hint="Up to 2000 chars. Applied only when Transcript edit is on."
+                initialValue={prefs.values.transcriptEditPrompt}
+                placeholder={DEFAULT_TRANSCRIPT_EDIT_PROMPT}
+                onChangeText={setTranscriptEditPromptDraft}
               />
               <SettingsInput
                 label="Loopback port"

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { ELEVENLABS_API_BASE } from "../shared/elevenlabs";
+import { ELEVENLABS_API_BASE, MAX_TRANSCRIPT_EDIT_CHARS } from "../shared/elevenlabs";
 
 export interface TranscribeArgs {
   audio: Buffer;
@@ -9,6 +9,7 @@ export interface TranscribeArgs {
   language?: string;
   secondaryLanguages?: string[];
   numbersAsDigits?: boolean;
+  transcriptEdit?: string;
 }
 
 export interface TranscribeResult {
@@ -102,6 +103,10 @@ export async function transcribeWithScribe(key: string, args: TranscribeArgs): P
   if (args.modelId === "scribe_v3" && args.numbersAsDigits) {
     fields.push(["numbers_format", "digits"]);
   }
+  const transcriptEdit = args.transcriptEdit?.trim().slice(0, MAX_TRANSCRIPT_EDIT_CHARS);
+  if (transcriptEdit) {
+    fields.push(["transcript_edit", transcriptEdit]);
+  }
   const { body, contentType } = buildMultipartBody(fields, "file", args.filename, args.mimeType, args.audio);
 
   let res: Response;
@@ -119,10 +124,19 @@ export async function transcribeWithScribe(key: string, args: TranscribeArgs): P
     if (res.status === 401) throw new Error("ElevenLabs rejected the API key (HTTP 401).");
     throw new Error("ElevenLabs transcription failed (HTTP " + res.status + "): " + responseBody.slice(0, 300));
   }
-  const json = (await res.json()) as { text?: unknown; language_code?: unknown };
-  if (typeof json.text !== "string") throw new Error("ElevenLabs response had no text field.");
+  const json = (await res.json()) as {
+    text?: unknown;
+    edited_transcript?: unknown;
+    language_code?: unknown;
+  };
+  const edited = typeof json.edited_transcript === "string" ? json.edited_transcript.trim() : "";
+  const rawText = typeof json.text === "string" ? json.text : "";
+  const text = edited.length > 0 ? edited : rawText;
+  if (typeof json.text !== "string" && edited.length === 0) {
+    throw new Error("ElevenLabs response had no text field.");
+  }
   return {
-    text: json.text,
+    text,
     language: typeof json.language_code === "string" ? json.language_code : undefined,
   };
 }

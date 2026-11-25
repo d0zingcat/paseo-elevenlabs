@@ -6,6 +6,9 @@ export type ElevenlabsSttModel = (typeof ELEVENLABS_STT_MODELS)[number];
 
 export const DEFAULT_SHIM_PORT = 8765;
 export const ELEVENLABS_API_BASE = "https://api.elevenlabs.io";
+export const MAX_TRANSCRIPT_EDIT_CHARS = 2000;
+export const DEFAULT_TRANSCRIPT_EDIT_PROMPT =
+  "Fix Chinese homophone typos and obvious speech-to-text errors, remove filler words or stutters, and normalize mixed Chinese/English spacing and software terms (e.g. Paseo, OpenAI, GitHub, API, TypeScript). Keep the original meaning and language; do not translate, expand, or answer.";
 
 export const elevenlabsPreferences = defineSettings({
   id: "elevenlabs",
@@ -18,6 +21,8 @@ export const elevenlabsPreferences = defineSettings({
     // Comma-separated secondary language codes (e.g. "en") passed alongside language on Scribe v3.
     secondaryLanguages: z.string().default(""),
     numbersAsDigits: z.boolean().default(true),
+    transcriptEditEnabled: z.boolean().default(false),
+    transcriptEditPrompt: z.string().max(MAX_TRANSCRIPT_EDIT_CHARS).default(DEFAULT_TRANSCRIPT_EDIT_PROMPT),
     port: z.number().int().min(1024).max(65535).default(DEFAULT_SHIM_PORT),
     manageDictation: z.boolean().default(true),
   }),

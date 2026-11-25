@@ -16,10 +16,12 @@ import { clearApiKey, readApiKey, readShimToken, writeApiKey, writeShimToken } f
 import {
   clearApiKeyRpc,
   DEFAULT_SHIM_PORT,
+  DEFAULT_TRANSCRIPT_EDIT_PROMPT,
   elevenlabsPreferences,
   type ElevenlabsPreferences,
   enableDictationRpc,
   getStatusRpc,
+  MAX_TRANSCRIPT_EDIT_CHARS,
   restorePreviousRpc,
   setApiKeyRpc,
   testKeyRpc,
@@ -30,6 +32,8 @@ const DEFAULT_PREFS: ElevenlabsPreferences = {
   language: "",
   secondaryLanguages: "",
   numbersAsDigits: true,
+  transcriptEditEnabled: false,
+  transcriptEditPrompt: DEFAULT_TRANSCRIPT_EDIT_PROMPT,
   port: DEFAULT_SHIM_PORT,
   manageDictation: true,
 };
@@ -85,6 +89,11 @@ async function readPrefs(read: () => Promise<{ status: string; values?: unknown 
         language: typeof values.language === "string" ? values.language : "",
         secondaryLanguages: typeof values.secondaryLanguages === "string" ? values.secondaryLanguages : "",
         numbersAsDigits: values.numbersAsDigits !== false,
+        transcriptEditEnabled: values.transcriptEditEnabled === true,
+        transcriptEditPrompt:
+          typeof values.transcriptEditPrompt === "string"
+            ? values.transcriptEditPrompt.slice(0, MAX_TRANSCRIPT_EDIT_CHARS)
+            : DEFAULT_TRANSCRIPT_EDIT_PROMPT,
         port:
           typeof values.port === "number" && Number.isInteger(values.port) && values.port >= 1024 && values.port <= 65535
             ? values.port
@@ -138,6 +147,8 @@ export default function contribute(server: PluginServerContext) {
       getLanguage: () => currentPrefs.language,
       getSecondaryLanguages: () => currentPrefs.secondaryLanguages,
       getNumbersAsDigits: () => currentPrefs.numbersAsDigits,
+      getTranscriptEdit: () =>
+        currentPrefs.transcriptEditEnabled ? currentPrefs.transcriptEditPrompt : undefined,
       getApiKey: () => readApiKey(),
       onError: (message: string) => {
         state.lastError = message;

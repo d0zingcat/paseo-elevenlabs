@@ -11,6 +11,7 @@ export interface ShimCallbacks {
   getLanguage: () => string;
   getSecondaryLanguages: () => string;
   getNumbersAsDigits: () => boolean;
+  getTranscriptEdit: () => string | undefined;
   getApiKey: () => Promise<string | null>;
   onError: (message: string) => void;
 }
@@ -146,6 +147,7 @@ async function handleRequest(
         : undefined;
       const modelId = callbacks.getModelId();
       const numbersAsDigits = callbacks.getNumbersAsDigits();
+      const transcriptEdit = callbacks.getTranscriptEdit()?.trim() || undefined;
       console.log("[elevenlabs-stt] transcribe", {
         modelId,
         requestedLanguage: requestedLanguage || null,
@@ -153,6 +155,7 @@ async function handleRequest(
         primaryLanguage: primaryLanguage ?? null,
         secondaryLanguages: secondaryLanguages ?? [],
         numbersAsDigits,
+        transcriptEdit: Boolean(transcriptEdit),
       });
       const result = await transcribeWithScribe(apiKey, {
         audio: file.data,
@@ -162,6 +165,7 @@ async function handleRequest(
         language: primaryLanguage,
         secondaryLanguages,
         numbersAsDigits,
+        transcriptEdit,
       });
       if (responseFormat === "text") {
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
