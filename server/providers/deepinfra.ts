@@ -3,6 +3,7 @@ import { buildMultipartBody, describeError } from "./http";
 import type { SttTranscribeArgs, SttTranscribeResult, VoiceSttProvider } from "./types";
 
 const KEY_CHECK_TIMEOUT_MS = 15_000;
+const TRANSCRIBE_TIMEOUT_MS = 60_000;
 
 export const deepinfraProvider: VoiceSttProvider = {
   id: "deepinfra",
@@ -11,7 +12,6 @@ export const deepinfraProvider: VoiceSttProvider = {
   models: [
     { id: "openai/whisper-large-v3-turbo", label: "Whisper large-v3 turbo (fast)" },
     { id: "openai/whisper-large-v3", label: "Whisper large-v3 (best accuracy)" },
-    { id: "Qwen/Qwen3-ASR-1.7B", label: "Qwen3-ASR 1.7B" },
   ],
 
   async testApiKey(key: string): Promise<{ ok: boolean; message: string }> {
@@ -47,15 +47,21 @@ export const deepinfraProvider: VoiceSttProvider = {
     }
     const { body, contentType } = buildMultipartBody(fields, "file", args.filename, args.mimeType, args.audio);
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TRANSCRIBE_TIMEOUT_MS);
     let res: Response;
     try {
       res = await fetch(DEEPINFRA_API_BASE + "/v1/openai/audio/transcriptions", {
         method: "POST",
         headers: { authorization: "Bearer " + key, "content-type": contentType },
         body: new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+        signal: controller.signal,
       });
     } catch (error) {
+      if (controller.signal.aborted) throw new Error("DeepInfra transcription timed out after 60s.");
       throw new Error("Could not reach DeepInfra: " + describeError(error));
+    } finally {
+      clearTimeout(timer);
     }
     if (!res.ok) {
       const responseBody = await res.text().catch(() => "");

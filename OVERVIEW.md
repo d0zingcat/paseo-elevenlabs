@@ -5,7 +5,7 @@ OpenAI-compatible endpoint running on 127.0.0.1 on the daemon machine. Because P
 already supports OpenAI speech endpoints, dictation works identically across the
 desktop app, the web app, and the iOS and Android apps.
 
-Currently supported upstream providers: DeepInfra (Whisper, Qwen3-ASR) and ElevenLabs Scribe (`scribe_v2` and
+Currently supported upstream providers: DeepInfra (Whisper), Qianwen AI (Qwen3-ASR Flash) and ElevenLabs Scribe (`scribe_v2` and
 `scribe_v3`), structured behind a provider adapter layer so additional STT, TTS,
 and realtime voice services can be added cleanly.
 

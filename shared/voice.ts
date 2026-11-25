@@ -1,7 +1,7 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export const VOICE_PROVIDERS = ["elevenlabs", "deepinfra"] as const;
+export const VOICE_PROVIDERS = ["elevenlabs", "deepinfra", "qianwen"] as const;
 export type VoiceProviderId = (typeof VOICE_PROVIDERS)[number];
 
 export const STT_MODEL_OPTIONS: Record<VoiceProviderId, ReadonlyArray<{ label: string; value: string }>> = {
@@ -9,16 +9,17 @@ export const STT_MODEL_OPTIONS: Record<VoiceProviderId, ReadonlyArray<{ label: s
     { label: "Scribe v2 (stable)", value: "scribe_v2" },
     { label: "Scribe v3 (newer)", value: "scribe_v3" },
   ],
+  qianwen: [{ label: "Qwen3-ASR Flash (fast)", value: "qwen3-asr-flash" }],
   deepinfra: [
     { label: "Whisper large-v3 turbo (fast)", value: "openai/whisper-large-v3-turbo" },
     { label: "Whisper large-v3 (best accuracy)", value: "openai/whisper-large-v3" },
-    { label: "Qwen3-ASR 1.7B", value: "Qwen/Qwen3-ASR-1.7B" },
   ],
 };
 
 export const DEFAULT_SHIM_PORT = 8765;
 export const ELEVENLABS_API_BASE = "https://api.elevenlabs.io";
 export const DEEPINFRA_API_BASE = "https://api.deepinfra.com";
+export const QIANWEN_API_BASE = "https://maas.qianwenaiapi.com/compatible-mode/v1";
 export const MAX_TRANSCRIPT_EDIT_CHARS = 2000;
 export const DEFAULT_TRANSCRIPT_EDIT_PROMPT =
   "Fix Chinese homophone typos and obvious speech-to-text errors, remove filler words or stutters, and normalize mixed Chinese/English spacing and software terms (e.g. Paseo, OpenAI, GitHub, API, TypeScript). Keep the original meaning and language; do not translate, expand, or answer.";

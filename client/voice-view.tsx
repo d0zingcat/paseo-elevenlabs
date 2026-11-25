@@ -40,6 +40,7 @@ interface Notice {
 const PROVIDER_LABELS: Record<VoiceProviderId, string> = {
   elevenlabs: "ElevenLabs",
   deepinfra: "DeepInfra",
+  qianwen: "Qianwen AI",
 };
 
 function isVoiceProviderId(value: string): value is VoiceProviderId {
@@ -392,7 +393,7 @@ export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
 
       <Text style={styles.section}>Scope & roadmap</Text>
       <Text style={styles.muted}>
-        Currently supports dictation via ElevenLabs Scribe and DeepInfra (Whisper, Qwen3-ASR), with a provider adapter layout ready for additional STT,
+        Currently supports dictation via ElevenLabs Scribe, DeepInfra (Whisper) and Qianwen AI (Qwen3-ASR), with a provider adapter layout ready for additional STT,
         TTS, and realtime voice services. Disabling or removing the plugin restores the previous dictation setting when
         it still points at this gateway.
       </Text>
