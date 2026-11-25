@@ -140,17 +140,28 @@ async function handleRequest(
     const fallbackLanguage = callbacks.getLanguage().trim();
     const responseFormat = (firstField(parsed, "response_format") ?? "json").trim().toLowerCase();
     try {
-      const primaryLanguage = requestedLanguage || fallbackLanguage || undefined;
+      const primaryLanguage = fallbackLanguage || requestedLanguage || undefined;
+      const secondaryLanguages = primaryLanguage
+        ? parseSecondaryLanguages(callbacks.getSecondaryLanguages(), primaryLanguage)
+        : undefined;
+      const modelId = callbacks.getModelId();
+      const numbersAsDigits = callbacks.getNumbersAsDigits();
+      console.log("[elevenlabs-stt] transcribe", {
+        modelId,
+        requestedLanguage: requestedLanguage || null,
+        configuredLanguage: fallbackLanguage || null,
+        primaryLanguage: primaryLanguage ?? null,
+        secondaryLanguages: secondaryLanguages ?? [],
+        numbersAsDigits,
+      });
       const result = await transcribeWithScribe(apiKey, {
         audio: file.data,
         filename: file.filename,
         mimeType: file.contentType,
-        modelId: callbacks.getModelId(),
+        modelId,
         language: primaryLanguage,
-        secondaryLanguages: primaryLanguage
-          ? parseSecondaryLanguages(callbacks.getSecondaryLanguages(), primaryLanguage)
-          : undefined,
-        numbersAsDigits: callbacks.getNumbersAsDigits(),
+        secondaryLanguages,
+        numbersAsDigits,
       });
       if (responseFormat === "text") {
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
