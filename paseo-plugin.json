@@ -10,5 +10,8 @@
   },
   "requirements": {
     "paseo": ">=0.15.4"
-  }
+  },
+  "media": [
+    "assets/screenshot.png"
+  ]
 }
