@@ -7,6 +7,8 @@ export interface TranscribeArgs {
   mimeType: string;
   modelId: string;
   language?: string;
+  secondaryLanguages?: string[];
+  numbersAsDigits?: boolean;
 }
 
 export interface TranscribeResult {
@@ -21,7 +23,7 @@ function sanitizeFilename(name: string): string {
 
 /** Build a multipart/form-data body without DOM FormData. */
 function buildMultipartBody(
-  fields: Record<string, string>,
+  fields: ReadonlyArray<readonly [string, string]>,
   fileField: string,
   filename: string,
   mimeType: string,
@@ -29,7 +31,7 @@ function buildMultipartBody(
 ): { body: Buffer; contentType: string } {
   const boundary = "----elevenlabs-stt-" + randomBytes(16).toString("hex");
   const chunks: Buffer[] = [];
-  for (const [key, value] of Object.entries(fields)) {
+  for (const [key, value] of fields) {
     chunks.push(
       Buffer.from("--" + boundary + '\r\nContent-Disposition: form-data; name="' + key + '"\r\n\r\n' + value + "\r\n"),
     );
@@ -88,8 +90,18 @@ export async function testApiKey(key: string): Promise<{ ok: boolean; message: s
 }
 
 export async function transcribeWithScribe(key: string, args: TranscribeArgs): Promise<TranscribeResult> {
-  const fields: Record<string, string> = { model_id: args.modelId };
-  if (args.language && args.language.length > 0) fields.language_code = args.language;
+  const fields: Array<[string, string]> = [["model_id", args.modelId]];
+  if (args.language && args.language.length > 0) {
+    fields.push(["language_code", args.language]);
+    if (args.modelId === "scribe_v3" && args.secondaryLanguages) {
+      for (const code of args.secondaryLanguages) {
+        fields.push(["secondary_language_codes", code]);
+      }
+    }
+  }
+  if (args.modelId === "scribe_v3" && args.numbersAsDigits) {
+    fields.push(["numbers_format", "digits"]);
+  }
   const { body, contentType } = buildMultipartBody(fields, "file", args.filename, args.mimeType, args.audio);
 
   let res: Response;

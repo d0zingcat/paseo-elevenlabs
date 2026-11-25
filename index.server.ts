@@ -28,6 +28,8 @@ import {
 const DEFAULT_PREFS: ElevenlabsPreferences = {
   modelId: "scribe_v2",
   language: "",
+  secondaryLanguages: "",
+  numbersAsDigits: true,
   port: DEFAULT_SHIM_PORT,
   manageDictation: true,
 };
@@ -81,6 +83,8 @@ async function readPrefs(read: () => Promise<{ status: string; values?: unknown 
       return {
         modelId: values.modelId === "scribe_v3" ? "scribe_v3" : "scribe_v2",
         language: typeof values.language === "string" ? values.language : "",
+        secondaryLanguages: typeof values.secondaryLanguages === "string" ? values.secondaryLanguages : "",
+        numbersAsDigits: values.numbersAsDigits !== false,
         port:
           typeof values.port === "number" && Number.isInteger(values.port) && values.port >= 1024 && values.port <= 65535
             ? values.port
@@ -132,6 +136,8 @@ export default function contribute(server: PluginServerContext) {
       getToken: () => state.token,
       getModelId: () => currentPrefs.modelId,
       getLanguage: () => currentPrefs.language,
+      getSecondaryLanguages: () => currentPrefs.secondaryLanguages,
+      getNumbersAsDigits: () => currentPrefs.numbersAsDigits,
       getApiKey: () => readApiKey(),
       onError: (message: string) => {
         state.lastError = message;

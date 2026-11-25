@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { parseSecondaryLanguages } from "../shared/elevenlabs";
 import { transcribeWithScribe } from "./elevenlabs-api";
 import { extractBoundary, firstField, firstFile, parseMultipart } from "./multipart";
 
@@ -8,6 +9,8 @@ export interface ShimCallbacks {
   getToken: () => string;
   getModelId: () => string;
   getLanguage: () => string;
+  getSecondaryLanguages: () => string;
+  getNumbersAsDigits: () => boolean;
   getApiKey: () => Promise<string | null>;
   onError: (message: string) => void;
 }
@@ -137,12 +140,17 @@ async function handleRequest(
     const fallbackLanguage = callbacks.getLanguage().trim();
     const responseFormat = (firstField(parsed, "response_format") ?? "json").trim().toLowerCase();
     try {
+      const primaryLanguage = requestedLanguage || fallbackLanguage || undefined;
       const result = await transcribeWithScribe(apiKey, {
         audio: file.data,
         filename: file.filename,
         mimeType: file.contentType,
         modelId: callbacks.getModelId(),
-        language: requestedLanguage || fallbackLanguage || undefined,
+        language: primaryLanguage,
+        secondaryLanguages: primaryLanguage
+          ? parseSecondaryLanguages(callbacks.getSecondaryLanguages(), primaryLanguage)
+          : undefined,
+        numbersAsDigits: callbacks.getNumbersAsDigits(),
       });
       if (responseFormat === "text") {
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });

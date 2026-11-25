@@ -19,6 +19,7 @@ import {
   elevenlabsPreferences,
   enableDictationRpc,
   getStatusRpc,
+  parseSecondaryLanguages,
   restorePreviousRpc,
   setApiKeyRpc,
   testKeyRpc,
@@ -66,6 +67,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const [keyDraft, setKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState<string>("scribe_v2");
   const [languageDraft, setLanguageDraft] = useState("");
+  const [secondaryLanguagesDraft, setSecondaryLanguagesDraft] = useState("");
+  const [numbersAsDigitsDraft, setNumbersAsDigitsDraft] = useState(true);
   const [portDraft, setPortDraft] = useState("8765");
   const [manageDraft, setManageDraft] = useState(true);
   const [draftsSeeded, setDraftsSeeded] = useState(false);
@@ -74,6 +77,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     if (prefs.status === "ready" && !draftsSeeded) {
       setModelDraft(prefs.values.modelId);
       setLanguageDraft(prefs.values.language);
+      setSecondaryLanguagesDraft(prefs.values.secondaryLanguages);
+      setNumbersAsDigitsDraft(prefs.values.numbersAsDigits);
       setPortDraft(String(prefs.values.port));
       setManageDraft(prefs.values.manageDictation);
       setDraftsSeeded(true);
@@ -147,12 +152,16 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
       notify("error", "Port must be an integer between 1024 and 65535.");
       return;
     }
+    const primaryLanguage = languageDraft.trim();
+    const secondaryLanguages = parseSecondaryLanguages(secondaryLanguagesDraft, primaryLanguage).join(", ");
     const ok = await prefs.save(
       {
         modelId: (ELEVENLABS_STT_MODELS as readonly string[]).includes(modelDraft)
           ? (modelDraft as "scribe_v2" | "scribe_v3")
           : "scribe_v2",
-        language: languageDraft.trim(),
+        language: primaryLanguage,
+        secondaryLanguages,
+        numbersAsDigits: numbersAsDigitsDraft,
         port,
         manageDictation: manageDraft,
       },
@@ -258,15 +267,28 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
               />
               <SettingsInput
                 label="Language"
-                hint="ISO-639-1 such as en or zh. Empty means auto-detect."
-                initialValue={languageDraft}
+                hint="Primary ISO-639-1 code such as zh or en. Empty means auto-detect."
+                initialValue={prefs.values.language}
                 placeholder="auto"
                 onChangeText={setLanguageDraft}
               />
               <SettingsInput
+                label="Secondary languages"
+                hint="Comma-separated (e.g. en). Used alongside Language on Scribe v3."
+                initialValue={prefs.values.secondaryLanguages}
+                placeholder="en"
+                onChangeText={setSecondaryLanguagesDraft}
+              />
+              <SettingsSwitch
+                label="Numbers as digits"
+                hint="Format numbers as 42 instead of forty-two (Scribe v3 only)."
+                value={numbersAsDigitsDraft}
+                onValueChange={setNumbersAsDigitsDraft}
+              />
+              <SettingsInput
                 label="Loopback port"
                 hint="127.0.0.1 only. Falls back to an ephemeral port when busy."
-                initialValue={portDraft}
+                initialValue={String(prefs.values.port)}
                 placeholder="8765"
                 onChangeText={setPortDraft}
               />

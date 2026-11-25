@@ -15,10 +15,28 @@ export const elevenlabsPreferences = defineSettings({
     modelId: z.enum(ELEVENLABS_STT_MODELS).default("scribe_v2"),
     // BCP-47 / ISO-639-1 code such as "en" or "zh". Empty means auto-detect.
     language: z.string().default(""),
+    // Comma-separated secondary language codes (e.g. "en") passed alongside language on Scribe v3.
+    secondaryLanguages: z.string().default(""),
+    numbersAsDigits: z.boolean().default(true),
     port: z.number().int().min(1024).max(65535).default(DEFAULT_SHIM_PORT),
     manageDictation: z.boolean().default(true),
   }),
 });
+
+export function parseSecondaryLanguages(raw: string, primary?: string): string[] {
+  const primaryLower = primary?.trim().toLowerCase() ?? "";
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of raw.split(/[,\s]+/)) {
+    const code = part.trim();
+    if (!code) continue;
+    const lower = code.toLowerCase();
+    if (lower === primaryLower || seen.has(lower)) continue;
+    seen.add(lower);
+    result.push(code);
+  }
+  return result;
+}
 
 export type ElevenlabsPreferences = z.output<typeof elevenlabsPreferences.schema>;
 
