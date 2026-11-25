@@ -136,12 +136,13 @@ async function handleRequest(
       sendJson(res, 500, openAiError("ElevenLabs API key is not configured. Open the plugin and save a key."));
       return;
     }
-    // Paseo sends ISO-639-1 (for example "en"); ElevenLabs accepts it as language_code.
+    // Plugin Language controls language_code: blank means true auto-detect
+    // (Paseo's OpenAI client sends "en" by default when stt.language is unset).
     const requestedLanguage = (firstField(parsed, "language") ?? "").trim();
-    const fallbackLanguage = callbacks.getLanguage().trim();
+    const configuredLanguage = callbacks.getLanguage().trim();
     const responseFormat = (firstField(parsed, "response_format") ?? "json").trim().toLowerCase();
     try {
-      const primaryLanguage = fallbackLanguage || requestedLanguage || undefined;
+      const primaryLanguage = configuredLanguage || undefined;
       const secondaryLanguages = primaryLanguage
         ? parseSecondaryLanguages(callbacks.getSecondaryLanguages(), primaryLanguage)
         : undefined;
@@ -151,8 +152,8 @@ async function handleRequest(
       console.log("[elevenlabs-stt] transcribe", {
         modelId,
         requestedLanguage: requestedLanguage || null,
-        configuredLanguage: fallbackLanguage || null,
-        primaryLanguage: primaryLanguage ?? null,
+        configuredLanguage: configuredLanguage || null,
+        primaryLanguage: primaryLanguage ?? "auto",
         secondaryLanguages: secondaryLanguages ?? [],
         numbersAsDigits,
         transcriptEdit: Boolean(transcriptEdit),
@@ -175,7 +176,7 @@ async function handleRequest(
       if (responseFormat === "verbose_json") {
         sendJson(res, 200, {
           text: result.text,
-          language: result.language ?? fallbackLanguage ?? requestedLanguage ?? undefined,
+          language: result.language ?? primaryLanguage ?? undefined,
         });
         return;
       }
