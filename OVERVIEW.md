@@ -1,28 +1,28 @@
-Dictation with ElevenLabs Scribe.
+Multi-provider voice gateway for Paseo.
 
-This plugin routes Paseo dictation through ElevenLabs speech-to-text. It runs a small
-endpoint on the daemon machine that speaks the OpenAI transcription protocol on
-127.0.0.1 and forwards audio to ElevenLabs Scribe. Paseo keeps working with its
-OpenAI voice settings, so dictation behaves the same in the desktop app, the web
-app, and the iOS and Android apps.
+This plugin routes Paseo speech features through upstream voice providers via a small
+OpenAI-compatible endpoint running on 127.0.0.1 on the daemon machine. Because Paseo
+already supports OpenAI speech endpoints, dictation works identically across the
+desktop app, the web app, and the iOS and Android apps.
 
-How it works: when you choose to use ElevenLabs for dictation, the plugin saves
-the current dictation speech setting, points dictation at the local endpoint, and
-uses a fresh token that exists only while the plugin runs. If the endpoint stops,
-the plugin tries to put the saved setting back. Disabling or removing the plugin
-does the same when dictation still points at it. Changing dictation yourself in
-Settings, Voice tells the plugin to stop managing that feature.
+Currently supported upstream provider: ElevenLabs Scribe (`scribe_v2` and
+`scribe_v3`), structured behind a provider adapter layer so additional STT, TTS,
+and realtime voice services can be added cleanly.
 
-Setup: an ElevenLabs API key, entered on the plugin screen and stored in a file
-only your daemon user can read. The key is never shown back in any app. The
-plugin needs Paseo 0.15.4 or later with plugins enabled. It runs on any machine
-the daemon runs on and needs internet access to reach ElevenLabs.
+How it works: when you enable dictation management, the plugin saves the previous
+dictation speech setting, points dictation at the local loopback endpoint with a
+daemon-persisted token, and routes audio to the selected upstream provider. If the
+endpoint stops or the plugin is disabled or removed while still managing dictation,
+it tries to restore the saved setting. Changing dictation manually in Settings,
+Voice leaves it under your manual control.
 
-Options: Scribe model (scribe_v2 or scribe_v3), spoken language (blank means
-auto-detect), loopback port (defaults to 8765, an ephemeral port is used when
-busy), and whether dictation is managed at all.
+Setup: open the Paseo Voice screen, save an API key for the selected provider (stored
+in a daemon-only 0600 file and never shown back in any app), test the key, configure
+options such as model and language hints, and enable dictation. Requires Paseo 0.15.4
+or later with plugins enabled and internet access from the daemon machine to reach
+the selected upstream provider.
 
-Data and limits: audio you dictate is sent to ElevenLabs for transcription, and
-the returned text enters Paseo as your message like typed text. Nothing else
-leaves the machine. This version covers dictation only; voice mode listening
-and speaking keep their current providers. Realtime Scribe models are not used.
+Data and limits: audio you dictate is sent to the selected upstream provider for
+transcription, and the returned text enters Paseo as your message. Optional Scribe v3
+features such as `secondary_language_codes`, `numbers_format`, and `transcript_edit`
+can be configured in Options (with `transcript_edit` off by default).

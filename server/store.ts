@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { VoiceProviderId } from "../shared/voice";
 
-const PLUGIN_DIR_NAME = "elevenlabs-stt";
-const KEY_FILE = "elevenlabs.key";
+const PLUGIN_DIR_NAME = "paseo-voice";
 const SHIM_TOKEN_FILE = "shim.token";
 const PREVIOUS_FILE = "previous-dictation-stt.json";
 
@@ -43,16 +43,20 @@ async function clearSecretFile(fileName: string): Promise<void> {
   }
 }
 
-export function readApiKey(): Promise<string | null> {
-  return readSecretFile(KEY_FILE);
+function providerKeyFile(provider: VoiceProviderId): string {
+  return provider + ".key";
 }
 
-export function writeApiKey(key: string): Promise<void> {
-  return writeSecretFile(KEY_FILE, key, "API key");
+export function readProviderApiKey(provider: VoiceProviderId): Promise<string | null> {
+  return readSecretFile(providerKeyFile(provider));
 }
 
-export function clearApiKey(): Promise<void> {
-  return clearSecretFile(KEY_FILE);
+export function writeProviderApiKey(provider: VoiceProviderId, key: string): Promise<void> {
+  return writeSecretFile(providerKeyFile(provider), key, provider + " API key");
+}
+
+export function clearProviderApiKey(provider: VoiceProviderId): Promise<void> {
+  return clearSecretFile(providerKeyFile(provider));
 }
 
 export function readShimToken(): Promise<string | null> {

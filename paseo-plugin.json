@@ -1,11 +1,11 @@
 {
-  "id": "elevenlabs-stt",
-  "name": "ElevenLabs STT",
-  "description": "Use ElevenLabs Scribe for Paseo dictation through a loopback OpenAI-compatible endpoint",
+  "id": "paseo-voice",
+  "name": "Paseo Voice",
+  "description": "Multi-provider voice gateway for Paseo dictation and speech features through a loopback endpoint",
   "translations": {
     "zh-CN": {
-      "name": "ElevenLabs 语音输入",
-      "description": "通过本地 OpenAI 兼容端点，让 Paseo 听写使用 ElevenLabs Scribe"
+      "name": "Paseo 语音",
+      "description": "通过本地回环端点为 Paseo 听写与语音功能接入多种上游语音服务"
     }
   },
   "requirements": {

@@ -94,7 +94,7 @@ export async function restoreDictationIfOurs(
 ): Promise<{ restored: boolean; reason: string }> {
   const current = getDictationStt(await readDaemonConfig(paseo));
   if (!isOurEndpoint(current, baseUrl)) {
-    return { restored: false, reason: "Dictation no longer points at ElevenLabs; leaving it alone." };
+    return { restored: false, reason: "Dictation no longer points at Paseo Voice; leaving it alone." };
   }
   const previous = await readPreviousDictationStt();
   if (previous === null || previous === undefined) {

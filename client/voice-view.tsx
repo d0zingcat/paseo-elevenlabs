@@ -17,7 +17,6 @@ import {
   clearApiKeyRpc,
   DEFAULT_TRANSCRIPT_EDIT_PROMPT,
   ELEVENLABS_STT_MODELS,
-  elevenlabsPreferences,
   enableDictationRpc,
   getStatusRpc,
   MAX_TRANSCRIPT_EDIT_CHARS,
@@ -25,7 +24,10 @@ import {
   restorePreviousRpc,
   setApiKeyRpc,
   testKeyRpc,
-} from "../shared/elevenlabs";
+  VOICE_PROVIDERS,
+  voicePreferences,
+  type VoiceProviderId,
+} from "../shared/voice";
 
 type Theme = PluginScreenProps["theme"];
 type Layout = PluginScreenProps["layout"];
@@ -35,7 +37,22 @@ interface Notice {
   text: string;
 }
 
-export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout }) {
+const PROVIDER_LABELS: Record<VoiceProviderId, string> = {
+  elevenlabs: "ElevenLabs",
+};
+
+const MODEL_OPTIONS: Record<VoiceProviderId, ReadonlyArray<{ label: string; value: string }>> = {
+  elevenlabs: [
+    { label: "Scribe v2 (stable)", value: "scribe_v2" },
+    { label: "Scribe v3 (newer)", value: "scribe_v3" },
+  ],
+};
+
+function isVoiceProviderId(value: string): value is VoiceProviderId {
+  return (VOICE_PROVIDERS as readonly string[]).includes(value);
+}
+
+export function VoiceView({ theme, layout }: { theme: Theme; layout: Layout }) {
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: theme.colors.surface0 },
@@ -49,7 +66,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     [theme, layout.compact],
   );
 
-  const prefs = useSettings(elevenlabsPreferences);
+  const prefs = useSettings(voicePreferences);
   const fetchStatus = useRpc(getStatusRpc);
   const callSetKey = useRpc(setApiKeyRpc);
   const callClearKey = useRpc(clearApiKeyRpc);
@@ -58,7 +75,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const callRestore = useRpc(restorePreviousRpc);
 
   const statusQuery = useQuery({
-    queryKey: ["elevenlabs-stt-status"],
+    queryKey: ["paseo-voice-status"],
     queryFn: () => fetchStatus({}),
     refetchInterval: 10000,
   });
@@ -67,7 +84,8 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const [notice, setNotice] = useState<Notice | null>(null);
   const [keyCheckNotice, setKeyCheckNotice] = useState<Notice | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
-  const [modelDraft, setModelDraft] = useState<string>("scribe_v2");
+  const [providerDraft, setProviderDraft] = useState<VoiceProviderId>("elevenlabs");
+  const [modelDraft, setModelDraft] = useState<string>("scribe_v3");
   const [languageDraft, setLanguageDraft] = useState("");
   const [secondaryLanguagesDraft, setSecondaryLanguagesDraft] = useState("");
   const [numbersAsDigitsDraft, setNumbersAsDigitsDraft] = useState(true);
@@ -79,6 +97,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
 
   useEffect(() => {
     if (prefs.status === "ready" && !draftsSeeded) {
+      setProviderDraft(prefs.values.provider);
       setModelDraft(prefs.values.modelId);
       setLanguageDraft(prefs.values.language);
       setSecondaryLanguagesDraft(prefs.values.secondaryLanguages);
@@ -91,6 +110,10 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
     }
   }, [prefs, draftsSeeded]);
 
+  const activeProvider: VoiceProviderId =
+    prefs.status === "ready" && isVoiceProviderId(providerDraft) ? providerDraft : "elevenlabs";
+  const activeProviderLabel = PROVIDER_LABELS[activeProvider];
+
   const notify = (kind: Notice["kind"], text: string) => {
     setNotice({ kind, text });
     if (kind === "ok") {
@@ -102,26 +125,26 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
   const notifyError = (error: unknown) => notify("error", error instanceof Error ? error.message : String(error));
 
   const saveKey = useMutation({
-    mutationFn: () => callSetKey({ key: keyDraft }),
+    mutationFn: () => callSetKey({ provider: activeProvider, key: keyDraft }),
     onSuccess: () => {
       setKeyDraft("");
       setKeyCheckNotice(null);
-      notify("ok", "API key saved on the daemon. It is never shown back in the app.");
+      notify("ok", activeProviderLabel + " API key saved on the daemon. It is never shown back in the app.");
       void statusQuery.refetch();
     },
     onError: notifyError,
   });
   const clearKey = useMutation({
-    mutationFn: () => callClearKey({}),
+    mutationFn: () => callClearKey({ provider: activeProvider }),
     onSuccess: () => {
       setKeyCheckNotice(null);
-      notify("ok", "API key removed from the daemon.");
+      notify("ok", activeProviderLabel + " API key removed from the daemon.");
       void statusQuery.refetch();
     },
     onError: notifyError,
   });
   const testKey = useMutation({
-    mutationFn: () => callTestKey({}),
+    mutationFn: () => callTestKey({ provider: activeProvider }),
     onMutate: () => setKeyCheckNotice(null),
     onSuccess: (result) => {
       const kind = result.ok ? "ok" : "error";
@@ -165,11 +188,11 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
       notify("error", "Edit instruction must be at most " + MAX_TRANSCRIPT_EDIT_CHARS + " characters.");
       return;
     }
+    const modelId = (ELEVENLABS_STT_MODELS as readonly string[]).includes(modelDraft) ? modelDraft : "scribe_v3";
     const ok = await prefs.save(
       {
-        modelId: (ELEVENLABS_STT_MODELS as readonly string[]).includes(modelDraft)
-          ? (modelDraft as "scribe_v2" | "scribe_v3")
-          : "scribe_v2",
+        provider: activeProvider,
+        modelId,
         language: primaryLanguage,
         secondaryLanguages,
         numbersAsDigits: numbersAsDigitsDraft,
@@ -188,10 +211,10 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>ElevenLabs speech-to-text</Text>
+      <Text style={styles.title}>Paseo Voice</Text>
       <Text style={styles.muted}>
-        Routes Paseo dictation through ElevenLabs Scribe via a loopback OpenAI-compatible endpoint on the daemon
-        machine. Audio goes to ElevenLabs; the API key stays in a daemon-only file.
+        Routes Paseo voice features through a local OpenAI-compatible gateway on the daemon machine. Upstream API keys
+        stay in daemon-only files.
       </Text>
 
       {prefs.saveError ? <Text style={styles.error}>{prefs.saveError}</Text> : null}
@@ -202,17 +225,22 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
           {statusQuery.isLoading ? (
             <Loading />
           ) : statusQuery.isError || !status ? (
-            <SettingsRow label="Shim status" hint="Could not read status. The plugin may still be starting." />
+            <SettingsRow label="Gateway status" hint="Could not read status. The plugin may still be starting." />
           ) : (
             <>
               <SettingsRow
-                label="Shim"
+                label="Gateway"
                 hint={status.running ? "Listening on " + status.baseUrl : "Stopped"}
               />
+              <SettingsRow label="Upstream provider" hint={PROVIDER_LABELS[status.provider]} />
               <SettingsRow label="API key" hint={status.hasKey ? "Saved on the daemon" : "Not saved"} />
               <SettingsRow
                 label="Dictation"
-                hint={status.managing ? "Using ElevenLabs (" + status.modelId + ")" : "Not managed by this plugin"}
+                hint={
+                  status.managing
+                    ? "Using " + PROVIDER_LABELS[status.provider] + " (" + status.modelId + ")"
+                    : "Not managed by this plugin"
+                }
               />
               <SettingsRow
                 label="Previous setting"
@@ -230,13 +258,13 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title="ElevenLabs API key">
+      <SettingsSection title={activeProviderLabel + " API key"}>
         <SettingsCard>
           <SettingsInput
             label="Key"
             hint="Stored daemon-side only. Saving replaces the previous key."
             initialValue=""
-            placeholder="xi-…"
+            placeholder="API key"
             secureTextEntry
             onChangeText={setKeyDraft}
           />
@@ -270,12 +298,17 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
           ) : prefs.status === "ready" ? (
             <>
               <SettingsSelect
+                label="Provider"
+                value={activeProvider}
+                options={VOICE_PROVIDERS.map((id) => ({ label: PROVIDER_LABELS[id], value: id }))}
+                onValueChange={(value) => {
+                  if (isVoiceProviderId(value)) setProviderDraft(value);
+                }}
+              />
+              <SettingsSelect
                 label="Model"
                 value={modelDraft}
-                options={[
-                  { label: "Scribe v2 (stable)", value: "scribe_v2" },
-                  { label: "Scribe v3 (newer)", value: "scribe_v3" },
-                ]}
+                options={MODEL_OPTIONS[activeProvider]}
                 onValueChange={setModelDraft}
               />
               <SettingsInput
@@ -320,7 +353,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
               />
               <SettingsSwitch
                 label="Manage dictation"
-                hint="Switch Paseo dictation to the shim when enabled."
+                hint="Switch Paseo dictation to the gateway when enabled."
                 value={manageDraft}
                 onValueChange={setManageDraft}
               />
@@ -344,7 +377,7 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         <SettingsCard>
           <SettingsAction
             label="Enable"
-            actionLabel={enable.isPending ? "Enabling…" : "Use ElevenLabs for dictation"}
+            actionLabel={enable.isPending ? "Enabling…" : "Use Paseo Voice for dictation"}
             onPress={() => enable.mutate()}
             disabled={busy}
           />
@@ -357,11 +390,11 @@ export function ElevenLabsView({ theme, layout }: { theme: Theme; layout: Layout
         </SettingsCard>
       </SettingsSection>
 
-      <Text style={styles.section}>Limits in this version</Text>
+      <Text style={styles.section}>Scope & roadmap</Text>
       <Text style={styles.muted}>
-        Dictation only. Voice mode listening and speaking keep their current providers. Realtime Scribe models are not
-        used. Disabling or removing the plugin restores the previous dictation setting when it still points at this
-        plugin.
+        Currently supports dictation via ElevenLabs Scribe, with a provider adapter layout ready for additional STT,
+        TTS, and realtime voice services. Disabling or removing the plugin restores the previous dictation setting when
+        it still points at this gateway.
       </Text>
     </ScrollView>
   );

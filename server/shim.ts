@@ -1,18 +1,19 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { parseSecondaryLanguages } from "../shared/elevenlabs";
-import { transcribeWithScribe } from "./elevenlabs-api";
+import { parseSecondaryLanguages, type VoiceProviderId } from "../shared/voice";
 import { extractBoundary, firstField, firstFile, parseMultipart } from "./multipart";
+import { getVoiceSttProvider } from "./providers";
 
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 
 export interface ShimCallbacks {
+  getProviderId: () => VoiceProviderId;
   getToken: () => string;
   getModelId: () => string;
   getLanguage: () => string;
   getSecondaryLanguages: () => string;
   getNumbersAsDigits: () => boolean;
   getTranscriptEdit: () => string | undefined;
-  getApiKey: () => Promise<string | null>;
+  getApiKey: (provider: VoiceProviderId) => Promise<string | null>;
   onError: (message: string) => void;
 }
 
@@ -30,7 +31,7 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
 }
 
 function openAiError(message: string): unknown {
-  return { error: { message, type: "server_error", code: "elevenlabs_stt_error" } };
+  return { error: { message, type: "server_error", code: "voice_gateway_error" } };
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -90,19 +91,17 @@ async function handleRequest(
   callbacks: ShimCallbacks,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
+  const provider = getVoiceSttProvider(callbacks.getProviderId());
 
   if (req.method === "GET" && url.pathname === "/health") {
-    sendJson(res, 200, { ok: true, service: "elevenlabs-stt-shim" });
+    sendJson(res, 200, { ok: true, service: "paseo-voice-shim", provider: provider.id });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/v1/models") {
     sendJson(res, 200, {
       object: "list",
-      data: [
-        { id: "scribe_v2", object: "model", owned_by: "elevenlabs" },
-        { id: "scribe_v3", object: "model", owned_by: "elevenlabs" },
-      ],
+      data: provider.models.map((model) => ({ id: model.id, object: "model", owned_by: provider.id })),
     });
     return;
   }
@@ -131,9 +130,13 @@ async function handleRequest(
       sendJson(res, 400, openAiError("Missing audio file field."));
       return;
     }
-    const apiKey = await callbacks.getApiKey();
+    const apiKey = await callbacks.getApiKey(provider.id);
     if (!apiKey) {
-      sendJson(res, 500, openAiError("ElevenLabs API key is not configured. Open the plugin and save a key."));
+      sendJson(
+        res,
+        500,
+        openAiError(provider.label + " API key is not configured. Open Paseo Voice and save a key."),
+      );
       return;
     }
     // Plugin Language controls language_code: blank means true auto-detect
@@ -146,10 +149,11 @@ async function handleRequest(
       const secondaryLanguages = primaryLanguage
         ? parseSecondaryLanguages(callbacks.getSecondaryLanguages(), primaryLanguage)
         : undefined;
-      const modelId = callbacks.getModelId();
+      const modelId = callbacks.getModelId() || provider.defaultModelId;
       const numbersAsDigits = callbacks.getNumbersAsDigits();
       const transcriptEdit = callbacks.getTranscriptEdit()?.trim() || undefined;
-      console.log("[elevenlabs-stt] transcribe", {
+      console.log("[paseo-voice] transcribe", {
+        provider: provider.id,
         modelId,
         requestedLanguage: requestedLanguage || null,
         configuredLanguage: configuredLanguage || null,
@@ -158,7 +162,7 @@ async function handleRequest(
         numbersAsDigits,
         transcriptEdit: Boolean(transcriptEdit),
       });
-      const result = await transcribeWithScribe(apiKey, {
+      const result = await provider.transcribe(apiKey, {
         audio: file.data,
         filename: file.filename,
         mimeType: file.contentType,

@@ -1,6 +1,6 @@
 {
-  "name": "elevenlabs-stt",
-  "description": "Use ElevenLabs Scribe for Paseo dictation through a loopback OpenAI-compatible endpoint",
+  "name": "paseo-voice",
+  "description": "Multi-provider voice gateway for Paseo dictation and speech features",
   "private": true,
   "version": "0.1.0",
   "files": [

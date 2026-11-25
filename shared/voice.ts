@@ -1,6 +1,9 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
+export const VOICE_PROVIDERS = ["elevenlabs"] as const;
+export type VoiceProviderId = (typeof VOICE_PROVIDERS)[number];
+
 export const ELEVENLABS_STT_MODELS = ["scribe_v2", "scribe_v3"] as const;
 export type ElevenlabsSttModel = (typeof ELEVENLABS_STT_MODELS)[number];
 
@@ -10,15 +13,16 @@ export const MAX_TRANSCRIPT_EDIT_CHARS = 2000;
 export const DEFAULT_TRANSCRIPT_EDIT_PROMPT =
   "Fix Chinese homophone typos and obvious speech-to-text errors, remove filler words or stutters, and normalize mixed Chinese/English spacing and software terms (e.g. Paseo, OpenAI, GitHub, API, TypeScript). Keep the original meaning and language; do not translate, expand, or answer.";
 
-export const elevenlabsPreferences = defineSettings({
-  id: "elevenlabs",
+export const voicePreferences = defineSettings({
+  id: "voice",
   scope: "host",
   version: 1,
   schema: z.object({
-    modelId: z.enum(ELEVENLABS_STT_MODELS).default("scribe_v2"),
+    provider: z.enum(VOICE_PROVIDERS).default("elevenlabs"),
+    modelId: z.string().default("scribe_v3"),
     // BCP-47 / ISO-639-1 code such as "en" or "zh". Empty means auto-detect.
     language: z.string().default(""),
-    // Comma-separated secondary language codes (e.g. "en") passed alongside language on Scribe v3.
+    // Comma-separated secondary language codes (e.g. "en") passed alongside language when supported.
     secondaryLanguages: z.string().default(""),
     numbersAsDigits: z.boolean().default(true),
     transcriptEditEnabled: z.boolean().default(false),
@@ -27,6 +31,8 @@ export const elevenlabsPreferences = defineSettings({
     manageDictation: z.boolean().default(true),
   }),
 });
+
+export type VoicePreferences = z.output<typeof voicePreferences.schema>;
 
 export function parseSecondaryLanguages(raw: string, primary?: string): string[] {
   const primaryLower = primary?.trim().toLowerCase() ?? "";
@@ -43,12 +49,11 @@ export function parseSecondaryLanguages(raw: string, primary?: string): string[]
   return result;
 }
 
-export type ElevenlabsPreferences = z.output<typeof elevenlabsPreferences.schema>;
-
 export const getStatusRpc = defineRpc({
-  name: "elevenlabs.status.get",
+  name: "voice.status.get",
   input: z.object({}),
   output: z.object({
+    provider: z.enum(VOICE_PROVIDERS),
     running: z.boolean(),
     baseUrl: z.string(),
     port: z.number(),
@@ -63,31 +68,38 @@ export const getStatusRpc = defineRpc({
 });
 
 export const setApiKeyRpc = defineRpc({
-  name: "elevenlabs.key.set",
-  input: z.object({ key: z.string().min(1).max(500) }),
+  name: "voice.key.set",
+  input: z.object({
+    provider: z.enum(VOICE_PROVIDERS).default("elevenlabs"),
+    key: z.string().min(1).max(500),
+  }),
   output: z.object({ ok: z.boolean() }),
 });
 
 export const clearApiKeyRpc = defineRpc({
-  name: "elevenlabs.key.clear",
-  input: z.object({}),
+  name: "voice.key.clear",
+  input: z.object({
+    provider: z.enum(VOICE_PROVIDERS).default("elevenlabs"),
+  }),
   output: z.object({ ok: z.boolean() }),
 });
 
 export const testKeyRpc = defineRpc({
-  name: "elevenlabs.key.test",
-  input: z.object({}),
+  name: "voice.key.test",
+  input: z.object({
+    provider: z.enum(VOICE_PROVIDERS).default("elevenlabs"),
+  }),
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 
 export const enableDictationRpc = defineRpc({
-  name: "elevenlabs.dictation.enable",
+  name: "voice.dictation.enable",
   input: z.object({}),
   output: z.object({ ok: z.boolean(), baseUrl: z.string(), message: z.string() }),
 });
 
 export const restorePreviousRpc = defineRpc({
-  name: "elevenlabs.dictation.restore",
+  name: "voice.dictation.restore",
   input: z.object({}),
   output: z.object({ ok: z.boolean(), restored: z.boolean(), message: z.string() }),
 });

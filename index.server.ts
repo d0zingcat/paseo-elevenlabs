@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { testApiKey } from "./server/elevenlabs-api";
 import {
   getDictationStt,
   hasPreviousSnapshot,
@@ -11,24 +10,34 @@ import {
   restoreDictationIfOurs,
   takeOverDictation,
 } from "./server/config-manager";
+import { getVoiceSttProvider } from "./server/providers";
 import { type StartedShim, startShim } from "./server/shim";
-import { clearApiKey, readApiKey, readShimToken, writeApiKey, writeShimToken } from "./server/store";
+import {
+  clearProviderApiKey,
+  readProviderApiKey,
+  readShimToken,
+  writeProviderApiKey,
+  writeShimToken,
+} from "./server/store";
 import {
   clearApiKeyRpc,
   DEFAULT_SHIM_PORT,
   DEFAULT_TRANSCRIPT_EDIT_PROMPT,
-  elevenlabsPreferences,
-  type ElevenlabsPreferences,
   enableDictationRpc,
   getStatusRpc,
   MAX_TRANSCRIPT_EDIT_CHARS,
   restorePreviousRpc,
   setApiKeyRpc,
   testKeyRpc,
-} from "./shared/elevenlabs";
+  VOICE_PROVIDERS,
+  voicePreferences,
+  type VoicePreferences,
+  type VoiceProviderId,
+} from "./shared/voice";
 
-const DEFAULT_PREFS: ElevenlabsPreferences = {
-  modelId: "scribe_v2",
+const DEFAULT_PREFS: VoicePreferences = {
+  provider: "elevenlabs",
+  modelId: "scribe_v3",
   language: "",
   secondaryLanguages: "",
   numbersAsDigits: true,
@@ -79,13 +88,23 @@ async function syncActiveShimConfig(
   return true;
 }
 
-async function readPrefs(read: () => Promise<{ status: string; values?: unknown }>): Promise<ElevenlabsPreferences> {
+async function readPrefs(read: () => Promise<{ status: string; values?: unknown }>): Promise<VoicePreferences> {
   try {
     const state = await read();
     if (state.status === "ready" && state.values && typeof state.values === "object") {
-      const values = state.values as Partial<ElevenlabsPreferences>;
+      const values = state.values as Partial<VoicePreferences>;
+      const provider: VoiceProviderId =
+        typeof values.provider === "string" && (VOICE_PROVIDERS as readonly string[]).includes(values.provider)
+          ? (values.provider as VoiceProviderId)
+          : "elevenlabs";
+      const adapter = getVoiceSttProvider(provider);
+      const validModel =
+        typeof values.modelId === "string" && adapter.models.some((model) => model.id === values.modelId)
+          ? values.modelId
+          : adapter.defaultModelId;
       return {
-        modelId: values.modelId === "scribe_v3" ? "scribe_v3" : "scribe_v2",
+        provider,
+        modelId: validModel,
         language: typeof values.language === "string" ? values.language : "",
         secondaryLanguages: typeof values.secondaryLanguages === "string" ? values.secondaryLanguages : "",
         numbersAsDigits: values.numbersAsDigits !== false,
@@ -108,13 +127,13 @@ async function readPrefs(read: () => Promise<{ status: string; values?: unknown 
 }
 
 export default function contribute(server: PluginServerContext) {
-  const settings = server.registerSettings(elevenlabsPreferences);
+  const settings = server.registerSettings(voicePreferences);
   const readSettings = () => settings.read() as unknown as Promise<{ status: string; values?: unknown }>;
   const state = createState();
   const remember = (paseo: PaseoApi) => {
     state.paseo = paseo;
   };
-  let currentPrefs: ElevenlabsPreferences = { ...DEFAULT_PREFS };
+  let currentPrefs: VoicePreferences = { ...DEFAULT_PREFS };
   settings.subscribe((next) => {
     if (next.status === "ready") {
       void readPrefs(readSettings).then((prefs) => {
@@ -124,7 +143,7 @@ export default function contribute(server: PluginServerContext) {
   });
 
   async function ensureShim(
-    prefs: ElevenlabsPreferences,
+    prefs: VoicePreferences,
     options: { reusePersistedToken?: boolean } = {},
   ): Promise<{ shim: StartedShim; reusedToken: boolean }> {
     if (state.shim && state.baseUrl !== "") {
@@ -142,6 +161,7 @@ export default function contribute(server: PluginServerContext) {
     const reusedToken = persisted !== null;
     state.token = persisted ?? randomBytes(32).toString("hex");
     const shim = await startShim(prefs.port, {
+      getProviderId: () => currentPrefs.provider,
       getToken: () => state.token,
       getModelId: () => currentPrefs.modelId,
       getLanguage: () => currentPrefs.language,
@@ -149,10 +169,10 @@ export default function contribute(server: PluginServerContext) {
       getNumbersAsDigits: () => currentPrefs.numbersAsDigits,
       getTranscriptEdit: () =>
         currentPrefs.transcriptEditEnabled ? currentPrefs.transcriptEditPrompt : undefined,
-      getApiKey: () => readApiKey(),
+      getApiKey: (provider) => readProviderApiKey(provider),
       onError: (message: string) => {
         state.lastError = message;
-        console.error("[elevenlabs-stt]", message);
+        console.error("[paseo-voice]", message);
       },
     });
     state.shim = shim;
@@ -161,16 +181,16 @@ export default function contribute(server: PluginServerContext) {
     shim.server.on("close", () => {
       if (!state.stopping && state.shim === shim) {
         state.shim = null;
-        state.lastError = "Shim stopped unexpectedly. Use Restore to return to the previous voice setting.";
-        console.error("[elevenlabs-stt] shim closed unexpectedly; restoring previous dictation setting.");
+        state.lastError = "Gateway stopped unexpectedly. Use Restore to return to the previous voice setting.";
+        console.error("[paseo-voice] shim closed unexpectedly; restoring previous dictation setting.");
         if (state.paseo) {
           restoreDictationIfOurs(state.paseo, state.baseUrl).catch((error: unknown) => {
-            console.error("[elevenlabs-stt] auto-restore failed:", error instanceof Error ? error.message : error);
+            console.error("[paseo-voice] auto-restore failed:", error instanceof Error ? error.message : error);
           });
         }
       }
     });
-    console.log("[elevenlabs-stt] shim listening on " + shim.baseUrl);
+    console.log("[paseo-voice] shim listening on " + shim.baseUrl);
     return { shim, reusedToken };
   }
 
@@ -186,7 +206,7 @@ export default function contribute(server: PluginServerContext) {
         state.lastError = error instanceof Error ? error.message : String(error);
       }
     }
-    const key = await readApiKey();
+    const key = await readProviderApiKey(currentPrefs.provider);
     let managing = state.baseUrl !== "" && state.shim !== null;
     if (managing) {
       try {
@@ -202,6 +222,7 @@ export default function contribute(server: PluginServerContext) {
       previousSaved = false;
     }
     return {
+      provider: currentPrefs.provider,
       running: state.shim !== null,
       baseUrl: state.baseUrl,
       port: currentPrefs.port,
@@ -215,29 +236,31 @@ export default function contribute(server: PluginServerContext) {
     };
   });
 
-  server.handle(setApiKeyRpc, async ({ key }) => {
+  server.handle(setApiKeyRpc, async ({ provider, key }) => {
     const trimmed = key.trim();
-    if (trimmed.length < 10) throw new Error("That key looks too short to be an ElevenLabs API key.");
-    await writeApiKey(trimmed);
+    if (trimmed.length < 10) throw new Error("That key looks too short to be an API key.");
+    await writeProviderApiKey(provider, trimmed);
     return { ok: true };
   });
 
-  server.handle(clearApiKeyRpc, async () => {
-    await clearApiKey();
+  server.handle(clearApiKeyRpc, async ({ provider }) => {
+    await clearProviderApiKey(provider);
     return { ok: true };
   });
 
-  server.handle(testKeyRpc, async () => {
-    const key = await readApiKey();
-    if (!key) return { ok: false, message: "No ElevenLabs API key is saved yet." };
-    return testApiKey(key);
+  server.handle(testKeyRpc, async ({ provider }) => {
+    const adapter = getVoiceSttProvider(provider);
+    const key = await readProviderApiKey(provider);
+    if (!key) return { ok: false, message: "No " + adapter.label + " API key is saved yet." };
+    return adapter.testApiKey(key);
   });
 
   server.handle(enableDictationRpc, async (_, { paseo }) => {
     remember(paseo);
     currentPrefs = await readPrefs(readSettings);
-    const key = await readApiKey();
-    if (!key) throw new Error("Save an ElevenLabs API key first.");
+    const adapter = getVoiceSttProvider(currentPrefs.provider);
+    const key = await readProviderApiKey(currentPrefs.provider);
+    if (!key) throw new Error("Save a " + adapter.label + " API key first.");
     if (!currentPrefs.manageDictation) throw new Error("Dictation management is turned off in preferences.");
     const { shim } = await ensureShim(currentPrefs);
     try {
@@ -253,7 +276,11 @@ export default function contribute(server: PluginServerContext) {
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : String(error));
     }
-    return { ok: true, baseUrl: shim.baseUrl, message: "Dictation now uses ElevenLabs " + currentPrefs.modelId + "." };
+    return {
+      ok: true,
+      baseUrl: shim.baseUrl,
+      message: "Dictation now uses " + adapter.label + " (" + currentPrefs.modelId + ").",
+    };
   });
 
   server.handle(restorePreviousRpc, async (_, { paseo }) => {
@@ -265,7 +292,7 @@ export default function contribute(server: PluginServerContext) {
   });
 
   // Resume management across daemon restarts: when a previous snapshot or
-  // persisted shim token exists, the user was using ElevenLabs, so restart the
+  // persisted shim token exists, the user was using Paseo Voice, so restart the
   // shim and reuse/refresh the token. Fresh installs wait for an explicit Enable.
   void (async () => {
     try {
@@ -274,9 +301,10 @@ export default function contribute(server: PluginServerContext) {
       const hasSnapshot = await hasPreviousSnapshot();
       const hasToken = (await readShimToken()) !== null;
       if (!hasSnapshot && !hasToken) return;
-      const key = await readApiKey();
+      const adapter = getVoiceSttProvider(currentPrefs.provider);
+      const key = await readProviderApiKey(currentPrefs.provider);
       if (!key) {
-        state.lastError = "ElevenLabs API key is missing after restart; dictation was left as-is.";
+        state.lastError = adapter.label + " API key is missing after restart; dictation was left as-is.";
         return;
       }
       const { shim, reusedToken } = await ensureShim(currentPrefs, { reusePersistedToken: true });
@@ -290,12 +318,11 @@ export default function contribute(server: PluginServerContext) {
         state.needsConfigSync = false;
       } else if (!reusedToken) {
         state.needsConfigSync = true;
-        state.lastError =
-          "Shim restarted with a new token; open the ElevenLabs plugin screen once to sync dictation.";
+        state.lastError = "Gateway restarted with a new token; open the Paseo Voice screen once to sync dictation.";
       }
     } catch (error) {
       state.lastError = error instanceof Error ? error.message : String(error);
-      console.error("[elevenlabs-stt] startup resume failed:", state.lastError);
+      console.error("[paseo-voice] startup resume failed:", state.lastError);
     }
   })();
 
@@ -315,7 +342,7 @@ export default function contribute(server: PluginServerContext) {
       try {
         await restoreDictationIfOurs(state.paseo, state.baseUrl);
       } catch (error) {
-        console.error("[elevenlabs-stt] restore on unload failed:", error instanceof Error ? error.message : error);
+        console.error("[paseo-voice] restore on unload failed:", error instanceof Error ? error.message : error);
       }
     }
   };
